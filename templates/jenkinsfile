@@ -10,11 +10,10 @@ pipeline {
 
     stages {
         stage('Checkout Code') {
-            steps {
-                git url: REPO_URL
-            }
-        }
-
+    steps {
+        git credentialsId: 'git-repo', url: REPO_URL
+    }
+}
         stage('Dependency Check') {
             steps {
                 sh 'pip install -r requirements.txt'
