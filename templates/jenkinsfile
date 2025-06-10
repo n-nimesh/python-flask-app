@@ -1,1 +1,42 @@
 
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = credentials('git-repo')
+        SERVER_IP = credentials('server-ip')
+        SERVER_USER = credentials('deploy-user')
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                git url: REPO_URL
+            }
+        }
+
+        stage('Dependency Check') {
+            steps {
+                sh 'pip install -r requirements.txt'
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh 'pytest tests/'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sshagent(['deploy-user']) {
+                    sh '''
+                        tar -cvf project.tar.gz .
+                        scp project.tar.gz ${SERVER_USER}@${SERVER_IP}:/home/deploy/
+                        ssh ${SERVER_USER}@${SERVER_IP} 'cd /home/deploy && tar -xvf project.tar.gz && python app.py'
+                    '''
+                }
+            }
+        }
+    }
+}
