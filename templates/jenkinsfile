@@ -1,41 +1,62 @@
-
 pipeline {
     agent any
 
     environment {
-        REPO_URL = credentials('git-repo')
         SERVER_IP = credentials('server-ip')
-        SERVER_USER = credentials('deploy-user')
+        GIT = 'https://github.com/n-nimesh/python-flask-app.git'
     }
-
     stages {
-        stage('Checkout Code') {
-    steps {
-        git credentialsId: 'git-repo', url: REPO_URL
-    }
-}
-        stage('Dependency Check') {
+        stage ("Clean WS") {
             steps {
-                sh 'pip install -r requirements.txt'
+                deleteDir()
             }
         }
-
-        stage('Run Tests') {
+        stage("checkout") {
             steps {
-                sh 'pytest tests/'
+                git url: "$GIT", branch: 'main'
             }
         }
-
-        stage('Deploy') {
+        stage('Setup') {
             steps {
-                sshagent(['deploy-user']) {
+                sh "pip install -r requirements.txt"
+            }
+        }
+        stage('Test') {
+            steps {
+                sh "python -m pytest"
+            }
+        }
+        stage('Package code') {
+            steps {
+                sh "zip -r python.zip ./* -x '.git'"
+                sh "ls -lart"
+            }
+        }
+        stage('Deploy to Prod') {
+            steps {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ssh-key', keyFileVariable: 'MY_SSH_KEY', usernameVariable: 'username')]) {
                     sh '''
-                        tar -cvf project.tar.gz .
-                        scp project.tar.gz ${SERVER_USER}@${SERVER_IP}:/home/deploy/
-                        ssh ${SERVER_USER}@${SERVER_IP} 'cd /home/deploy && tar -xvf project.tar.gz && python app.py'
+                    scp -i $MY_SSH_KEY -o StrictHostKeyChecking=no /var/lib/jenkins/workspace/pythonflask/python.zip  ${username}@${SERVER_IP}:/home/ec2-user/
+                    ssh -i $MY_SSH_KEY -o StrictHostKeyChecking=no ${username}@${SERVER_IP} << EOF
+                        unzip -o /home/ec2-user/python.zip -d /home/ec2-user/app/
+                        python3 -m venv /home/ec2-user/app/venv --clear
+                                source /home/ec2-user/app/venv/bin/activate
+                                
+                                # Install dependencies
+                                pip install --upgrade pip
+                                pip install -r /home/ec2-user/app/requirements.txt --no-cache-dir
+                                
+                                # Restart service
+                                sudo systemctl restart flaskapp.service
+EOF
                     '''
                 }
             }
         }
+       
+        
+       
+        
     }
 }
+        
